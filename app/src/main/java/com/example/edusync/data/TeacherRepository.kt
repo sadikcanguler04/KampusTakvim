@@ -449,6 +449,14 @@ class TeacherRepository @Inject constructor(
         proposalsRef.child(teacherId.toString()).setValue(snapshot.value).await()
     }
 
+    suspend fun ensureProposalDraftFromAvailability(teacherId: Int) = withContext(Dispatchers.IO) {
+        val proposalSnapshot = proposalsRef.child(teacherId.toString()).get().await()
+        if (!proposalSnapshot.exists() || proposalSnapshot.childrenCount == 0L) {
+            val availabilitySnapshot = availabilityRef.child(teacherId.toString()).get().await()
+            proposalsRef.child(teacherId.toString()).setValue(availabilitySnapshot.value).await()
+        }
+    }
+
     suspend fun checkClassroomConflict(dayIndex: Int, slotIndex: Int, classroom: String, excludeTeacherId: Int): String? = withContext(Dispatchers.IO) {
         // PDF Optimization Task 5: Parallel Process with async/await
         val availabilitiesDeferred = async<DataSnapshot> { availabilityRef.get().await() }

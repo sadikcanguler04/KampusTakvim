@@ -26,6 +26,14 @@ import com.example.edusync.data.Course
 import com.example.edusync.data.Teacher
 import com.example.edusync.ui.theme.*
 
+private data class PendingAssignment(
+    val course: Course,
+    val teacher: Teacher,
+    val classroom: Classroom,
+    val day: Int,
+    val timeSlot: Int
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AssignmentScreen(
@@ -42,6 +50,7 @@ fun AssignmentScreen(
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf<String?>(null) }
+    var pendingAssignment by remember { mutableStateOf<PendingAssignment?>(null) }
 
     val days = listOf("Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma")
     val dayShorts = listOf("Pzt", "Sal", "Çar", "Per", "Cum")
@@ -190,7 +199,39 @@ fun AssignmentScreen(
                     viewModel.clearAssignmentError()
                 },
                 onConfirm = { course, teacher, classroom, day, timeSlot ->
-                    viewModel.assignSchedule(course.code, course.name, teacher.id, classroom.roomCode, day, timeSlot)
+                    pendingAssignment = PendingAssignment(course, teacher, classroom, day, timeSlot)
+                }
+            )
+        }
+
+        pendingAssignment?.let { assignment ->
+            AssignmentModeDialog(
+                assignment = assignment,
+                days = days,
+                timeSlots = timeSlots,
+                isAssigning = isAssigning,
+                onDismiss = { pendingAssignment = null },
+                onSendProposal = {
+                    viewModel.proposeScheduleToTeacher(
+                        assignment.course.code,
+                        assignment.course.name,
+                        assignment.teacher.id,
+                        assignment.classroom.roomCode,
+                        assignment.day,
+                        assignment.timeSlot
+                    )
+                    pendingAssignment = null
+                },
+                onForceAssign = {
+                    viewModel.assignSchedule(
+                        assignment.course.code,
+                        assignment.course.name,
+                        assignment.teacher.id,
+                        assignment.classroom.roomCode,
+                        assignment.day,
+                        assignment.timeSlot
+                    )
+                    pendingAssignment = null
                 }
             )
         }
@@ -510,6 +551,77 @@ fun AssignmentDialog(
                             }
                         }
                     }
+                }
+            }
+        }
+    )
+}
+
+@Composable
+private fun AssignmentModeDialog(
+    assignment: PendingAssignment,
+    days: List<String>,
+    timeSlots: List<String>,
+    isAssigning: Boolean,
+    onDismiss: () -> Unit,
+    onSendProposal: () -> Unit,
+    onForceAssign: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { if (!isAssigning) onDismiss() },
+        title = { Text("Atama Yontemi", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "${assignment.course.code} - ${assignment.course.name}",
+                    fontWeight = FontWeight.Bold,
+                    color = TextDark
+                )
+                Text("${assignment.teacher.title} ${assignment.teacher.name} ${assignment.teacher.surname}")
+                Text("${days.getOrElse(assignment.day) { "Gun" }} / ${timeSlots.getOrElse(assignment.timeSlot) { "Saat" }}")
+                Text("Sinif: ${assignment.classroom.roomCode}")
+                Surface(
+                    color = PrimaryBlue.copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(
+                        "Hocaya onay icin gonderirseniz ders kesin programa islenmez; hoca onaylayinca programa duser. Mecburi ata secenegi dersi direkt kesin programa yazar.",
+                        modifier = Modifier.padding(12.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextDark
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = onSendProposal,
+                    enabled = !isAssigning,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("HOCAYA ONAY ICIN GONDER")
+                }
+                OutlinedButton(
+                    onClick = onForceAssign,
+                    enabled = !isAssigning,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = ErrorRed)
+                ) {
+                    Icon(Icons.Default.PriorityHigh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("MECBURİ OLARAK ATA")
+                }
+                TextButton(
+                    onClick = onDismiss,
+                    enabled = !isAssigning,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("IPTAL")
                 }
             }
         }

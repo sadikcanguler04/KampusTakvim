@@ -206,6 +206,56 @@ class AdminViewModel @Inject constructor(
         }
     }
 
+    fun proposeScheduleToTeacher(
+        courseCode: String,
+        courseName: String,
+        teacherId: Int,
+        classroomId: String,
+        day: Int,
+        timeSlot: Int
+    ) {
+        if (_isAssigning.value) return
+        _isAssigning.value = true
+        _assignmentError.value = null
+
+        viewModelScope.launch {
+            try {
+                val conflict = teacherRepository.checkScheduleConflict(day, timeSlot, teacherId, classroomId, courseCode)
+                if (conflict != null) {
+                    _assignmentError.value = conflict
+                    return@launch
+                }
+
+                teacherRepository.ensureProposalDraftFromAvailability(teacherId)
+                teacherRepository.updateProposal(
+                    TeacherAvailability(
+                        teacherId = teacherId,
+                        dayIndex = day,
+                        slotIndex = timeSlot,
+                        isBusy = true,
+                        courseName = courseName,
+                        courseCode = courseCode,
+                        classroom = classroomId
+                    )
+                )
+                teacherRepository.updateScheduleStatus(
+                    teacherId = teacherId,
+                    status = ScheduleStatus.ADMIN_PROPOSAL,
+                    adminNote = "$courseCode dersi icin yeni program onerisi gonderildi.",
+                    teacherNote = ""
+                )
+
+                _assignmentError.value = null
+                _assignmentSuccess.value = true
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _assignmentError.value = "Oneri gonderilemedi: ${e.localizedMessage}"
+            } finally {
+                _isAssigning.value = false
+            }
+        }
+    }
+
     fun deleteScheduleEntry(entryId: String) {
         viewModelScope.launch {
             try {
