@@ -27,6 +27,18 @@ class FirebaseUserRepository @Inject constructor(
         usersRef.child(user.username).setValue(user).await()
     }
 
+    suspend fun changePassword(username: String, currentPassword: String, newPassword: String): User? = withContext(Dispatchers.IO) {
+        val snapshot = usersRef.child(username).get().await()
+        val user = snapshot.getValue(User::class.java) ?: return@withContext null
+        val currentHash = withContext(Dispatchers.Default) { SecurityUtils.hashPassword(currentPassword) }
+        if (user.password != currentHash) return@withContext null
+
+        val newHash = withContext(Dispatchers.Default) { SecurityUtils.hashPassword(newPassword) }
+        val updatedUser = user.copy(password = newHash, mustChangePassword = false)
+        usersRef.child(username).setValue(updatedUser).await()
+        updatedUser
+    }
+
     suspend fun getUserByTeacherId(teacherId: Int): User? = withContext(Dispatchers.IO) {
         val snapshot = usersRef.get().await()
         withContext(Dispatchers.Default) {

@@ -23,6 +23,7 @@ class TeacherRepository @Inject constructor(
     private val proposalsRef = database.getReference("proposals")
     private val codesRef = database.getReference("verification_codes")
     private val usersRef = database.getReference("users")
+    private val departmentsRef = database.getReference("departments")
 
     private fun getTeacherKeyById(id: Int): String = id.toString()
 
@@ -63,7 +64,10 @@ class TeacherRepository @Inject constructor(
         
         if (existing != null) return@withContext existing.id.toLong()
 
-        val id = System.currentTimeMillis().toInt() 
+        val id = System.currentTimeMillis().toInt()
+        val departmentId = teacher.departmentId.ifBlank {
+            if (teacher.department.isNotBlank()) ensureDepartment(teacher.department) else ""
+        }
         val targetRef = teachersRef.child(id.toString())
         
         val encryptedTeacher = withContext(Dispatchers.Default) {
@@ -72,6 +76,7 @@ class TeacherRepository @Inject constructor(
                 name = SecurityUtils.encrypt(teacher.name),
                 surname = SecurityUtils.encrypt(teacher.surname),
                 department = SecurityUtils.encrypt(teacher.department),
+                departmentId = departmentId,
                 title = SecurityUtils.encrypt(teacher.title)
             )
         }
@@ -129,7 +134,10 @@ class TeacherRepository @Inject constructor(
         }
         if (existing != null) return@withContext existing.id.toLong()
 
-        val id = System.currentTimeMillis().toInt() 
+        val id = System.currentTimeMillis().toInt()
+        val departmentId = teacher.departmentId.ifBlank {
+            if (teacher.department.isNotBlank()) ensureDepartment(teacher.department) else ""
+        }
         val targetRef = teachersRef.child(id.toString())
         
         val encryptedTeacher = withContext(Dispatchers.Default) {
@@ -138,6 +146,7 @@ class TeacherRepository @Inject constructor(
                 name = SecurityUtils.encrypt(teacher.name),
                 surname = SecurityUtils.encrypt(teacher.surname),
                 department = SecurityUtils.encrypt(teacher.department),
+                departmentId = departmentId,
                 title = SecurityUtils.encrypt(teacher.title)
             )
         }
@@ -158,6 +167,80 @@ class TeacherRepository @Inject constructor(
     }
 
     private fun normalize(t: String) = t.lowercase(Locale("tr")).replace('ı','i').replace('ş','s').replace('ğ','g').replace('ü','u').replace('ö','o').replace('ç','c').trim()
+
+    private fun normalizeForKey(t: String) = t.lowercase(Locale("tr"))
+        .replace('\u0131', 'i')
+        .replace('\u015f', 's')
+        .replace('\u011f', 'g')
+        .replace('\u00fc', 'u')
+        .replace('\u00f6', 'o')
+        .replace('\u00e7', 'c')
+        .trim()
+
+    private fun departmentKey(name: String): String {
+        val normalized = normalizeForKey(name)
+            .replace(Regex("[^a-z0-9]+"), "_")
+            .trim('_')
+        return normalized.ifBlank { "genel" }
+    }
+
+    suspend fun ensureDepartment(departmentName: String): String = withContext(Dispatchers.IO) {
+        val name = departmentName.ifBlank { "Genel" }
+        val id = departmentKey(name)
+        val snapshot = departmentsRef.child(id).get().await()
+        if (!snapshot.exists()) {
+            departmentsRef.child(id).setValue(Department(id = id, name = name)).await()
+        }
+        id
+    }
+
+    fun getAllDepartments(): Flow<List<Department>> = callbackFlow {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                launch(Dispatchers.Default) {
+                    val list = snapshot.children.mapNotNull { it.getValue(Department::class.java) }
+                    trySend(list)
+                }
+            }
+            override fun onCancelled(error: DatabaseError) { close(error.toException()) }
+        }
+        departmentsRef.addValueEventListener(listener)
+        awaitClose { departmentsRef.removeEventListener(listener) }
+    }.distinctUntilChanged().flowOn(Dispatchers.IO)
+
+    suspend fun createInitialTeacherAccountIfMissing(
+        teacher: Teacher,
+        baseUsername: String,
+        initialPassword: String
+    ): GeneratedCredential? = withContext(Dispatchers.IO) {
+        val existingUsers = usersRef.get().await().children.mapNotNull { it.getValue(User::class.java) }
+        if (existingUsers.any { it.teacherId == teacher.id }) return@withContext null
+
+        val cleanBase = baseUsername.ifBlank { "hoca_${teacher.id}" }
+        var username = cleanBase
+        var suffix = 2
+        while (existingUsers.any { it.username == username }) {
+            username = "${cleanBase}${suffix++}"
+        }
+
+        val hashedPassword = withContext(Dispatchers.Default) { SecurityUtils.hashPassword(initialPassword) }
+        val user = User(
+            username = username,
+            password = hashedPassword,
+            role = UserRole.TEACHER,
+            teacherId = teacher.id,
+            mustChangePassword = true
+        )
+        usersRef.child(username).setValue(user).await()
+
+        GeneratedCredential(
+            teacherName = listOf(teacher.title, teacher.name, teacher.surname)
+                .filter { it.isNotBlank() }
+                .joinToString(" "),
+            username = username,
+            initialPassword = initialPassword
+        )
+    }
 
     suspend fun generateCodeForTeacher(teacherId: Int): String = withContext(Dispatchers.IO) {
         val code = (100000..999999).random().toString()
@@ -214,7 +297,8 @@ class TeacherRepository @Inject constructor(
         val newUser = user.copy(
             role = UserRole.TEACHER,
             teacherId = teacherId,
-            password = hashedPassword
+            password = hashedPassword,
+            mustChangePassword = false
         )
         usersRef.child(newUser.username).setValue(newUser).await()
         true
@@ -267,7 +351,48 @@ class TeacherRepository @Inject constructor(
 
     suspend fun applyProposal(teacherId: Int) = withContext(Dispatchers.IO) {
         val snapshot = proposalsRef.child(teacherId.toString()).get().await()
+        
+        // 1. Sync to legacy availability table
         availabilityRef.child(teacherId.toString()).setValue(snapshot.value).await()
+        
+        // 2. Sync to Phase 2 schedule_entries table
+        val seSnapshot = scheduleEntriesRef.get().await()
+        val updates = mutableMapOf<String, Any?>()
+        
+        // Delete all old schedule entries for this teacher
+        seSnapshot.children.forEach { child ->
+            val entry = child.getValue(ScheduleEntry::class.java)
+            if (entry?.teacherId == teacherId) {
+                updates[child.key!!] = null
+            }
+        }
+        
+        // Insert new schedule entries from the approved proposal
+        snapshot.children.forEach { daySlotSnap ->
+            val avail = daySlotSnap.getValue(TeacherAvailability::class.java)
+            if (avail != null && avail.isBusy) {
+                // Generate a unique ID for the global schedule entry
+                val newId = "${avail.dayIndex}_${avail.slotIndex}_${avail.classroom}_${System.currentTimeMillis()}"
+                
+                // Keep the raw courseName as encryption is handled during reads/writes in specific layers
+                val newEntry = ScheduleEntry(
+                    id = newId,
+                    courseCode = avail.courseCode,
+                    courseName = avail.courseName, // Raw (already encrypted in proposal)
+                    teacherId = teacherId,
+                    classroomId = avail.classroom,
+                    day = avail.dayIndex,
+                    timeSlot = avail.slotIndex
+                )
+                updates[newId] = newEntry
+            }
+        }
+        
+        if (updates.isNotEmpty()) {
+            scheduleEntriesRef.updateChildren(updates).await()
+        }
+
+        // 3. Clear the proposal
         proposalsRef.child(teacherId.toString()).removeValue().await()
     }
 
@@ -341,9 +466,10 @@ class TeacherRepository @Inject constructor(
     }
 
     suspend fun insertCourse(course: Course) = withContext(Dispatchers.IO) {
+        val id = course.id.ifBlank { "${course.code}_${course.teacherId ?: "general"}" }
         val encryptedName = withContext(Dispatchers.Default) { SecurityUtils.encrypt(course.name) }
-        val encryptedCourse = course.copy(name = encryptedName)
-        coursesRef.child(course.code).setValue(encryptedCourse).await()
+        val encryptedCourse = course.copy(id = id, name = encryptedName)
+        coursesRef.child(id).setValue(encryptedCourse).await()
     }
 
     suspend fun insertCoursesBatch(courses: List<Course>) = withContext(Dispatchers.IO) {
@@ -351,8 +477,8 @@ class TeacherRepository @Inject constructor(
         withContext(Dispatchers.Default) {
             courses.forEach { course ->
                 val encryptedName = SecurityUtils.encrypt(course.name)
-                val key = "${course.code}_${course.teacherId}"
-                updates[key] = course.copy(name = encryptedName)
+                val key = course.id.ifBlank { "${course.code}_${course.teacherId ?: "general"}" }
+                updates[key] = course.copy(id = key, name = encryptedName)
             }
         }
         if (updates.isNotEmpty()) {
@@ -418,7 +544,10 @@ class TeacherRepository @Inject constructor(
 
     suspend fun insertClassroom(classroom: Classroom) = withContext(Dispatchers.IO) {
         val id = classroom.roomCode.ifEmpty { System.currentTimeMillis().toString() }
-        val entry = classroom.copy(id = id)
+        val departmentId = classroom.departmentId.ifBlank {
+            if (classroom.department.isNotBlank()) ensureDepartment(classroom.department) else ""
+        }
+        val entry = classroom.copy(id = id, departmentId = departmentId)
         classroomsRef.child(id).setValue(entry).await()
     }
 
@@ -427,11 +556,17 @@ class TeacherRepository @Inject constructor(
     }
 
     suspend fun insertClassroomsBatch(classrooms: List<Classroom>) = withContext(Dispatchers.IO) {
+        val departmentIds = classrooms
+            .map { it.department }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .associateWith { ensureDepartment(it) }
         val updates = mutableMapOf<String, Any>()
         withContext(Dispatchers.Default) {
             classrooms.forEach { classroom ->
                 val id = classroom.roomCode.ifEmpty { System.currentTimeMillis().toString() }
-                updates[id] = classroom.copy(id = id)
+                val departmentId = classroom.departmentId.ifBlank { departmentIds[classroom.department].orEmpty() }
+                updates[id] = classroom.copy(id = id, departmentId = departmentId)
             }
         }
         if (updates.isNotEmpty()) {

@@ -13,7 +13,8 @@ data class User(
     var username: String = "",
     var password: String = "",
     var role: UserRole = UserRole.TEACHER,
-    var teacherId: Int? = null
+    var teacherId: Int? = null,
+    var mustChangePassword: Boolean = false
 )
 
 @Stable
@@ -22,6 +23,7 @@ data class Teacher(
     var name: String = "",
     var surname: String = "",
     var department: String = "",
+    var departmentId: String = "",
     var title: String = "",
     var scheduleStatus: ScheduleStatus = ScheduleStatus.APPROVED,
     var adminNote: String = "",
@@ -44,8 +46,10 @@ data class TeacherAvailability(
 
 @Stable
 data class Course(
+    var id: String = "",
     var code: String = "",
     var name: String = "",
+    var departmentId: String = "",
     var teacherId: Int? = null
 )
 
@@ -65,7 +69,8 @@ data class Classroom(
     var id: String = "",
     var roomCode: String = "",
     var capacity: Int = 0,
-    var department: String = ""
+    var department: String = "",
+    var departmentId: String = ""
 )
 
 @Stable
@@ -77,4 +82,23 @@ data class ScheduleEntry(
     var classroomId: String = "",
     var day: Int = 0,
     var timeSlot: Int = 0
+)
+
+@Stable
+data class Department(
+    var id: String = "",
+    var name: String = ""
+)
+
+@Stable
+data class GeneratedCredential(
+    val teacherName: String = "",
+    val username: String = "",
+    val initialPassword: String = ""
+)
+
+@Stable
+data class ExcelImportReport(
+    val count: Int = 0,
+    val generatedCredentials: List<GeneratedCredential> = emptyList()
 )

@@ -269,7 +269,8 @@ class AdminViewModel @Inject constructor(
             _importState.value = ImportResult.Loading
             val result = excelManager.importExcel(context, uri)
             _importState.value = if (result.isSuccess) {
-                ImportResult.Success(result.getOrNull() ?: 0)
+                val report = result.getOrNull() ?: ExcelImportReport()
+                ImportResult.Success(report.count, report.generatedCredentials)
             } else {
                 ImportResult.Error(result.exceptionOrNull()?.message ?: "Aktarım hatası")
             }

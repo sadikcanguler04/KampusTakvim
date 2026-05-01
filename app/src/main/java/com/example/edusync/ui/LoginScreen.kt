@@ -19,12 +19,12 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.edusync.data.UserRole
+import com.example.edusync.data.User
 import com.example.edusync.ui.theme.*
 
 @Composable
 fun LoginScreen(
-    onLoginSuccess: (UserRole, Int?, String) -> Unit,
+    onLoginSuccess: (User) -> Unit,
     onNavigateToActivation: () -> Unit,
     viewModel: LoginViewModel = hiltViewModel()
 ) {
@@ -38,7 +38,7 @@ fun LoginScreen(
     LaunchedEffect(loginState) {
         if (loginState is LoginResult.Success) {
             val user = (loginState as LoginResult.Success).user
-            onLoginSuccess(user.role, user.teacherId, user.username)
+            onLoginSuccess(user)
             viewModel.resetState()
         }
     }

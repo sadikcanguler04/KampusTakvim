@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.apache.poi.ss.usermodel.WorkbookFactory
 import java.io.InputStream
+import java.security.SecureRandom
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,6 +30,37 @@ class ExcelManager @Inject constructor(
     private val teacherRepository: TeacherRepository
 ) {
     private val TAG = "ExcelManager"
+    private val secureRandom = SecureRandom()
+    private val passwordChars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+    private fun normalizeForKey(value: String): String {
+        return value.lowercase(Locale("tr"))
+            .replace('\u0131', 'i')
+            .replace('\u015f', 's')
+            .replace('\u011f', 'g')
+            .replace('\u00fc', 'u')
+            .replace('\u00f6', 'o')
+            .replace('\u00e7', 'c')
+            .replace(Regex("[^a-z0-9]+"), "")
+            .trim()
+    }
+
+    private fun buildUsername(name: String, surname: String): String {
+        val normalizedName = normalizeForKey(name)
+        val normalizedSurname = normalizeForKey(surname)
+        return listOf(normalizedName, normalizedSurname)
+            .filter { it.isNotBlank() }
+            .joinToString("_")
+            .ifBlank { "hoca" }
+    }
+
+    private fun generateInitialPassword(): String {
+        return buildString {
+            repeat(6) {
+                append(passwordChars[secureRandom.nextInt(passwordChars.length)])
+            }
+        }
+    }
 
     suspend fun getPreview(context: Context, uri: Uri): Result<List<ExcelPreviewItem>> = withContext(Dispatchers.IO) {
         var inputStream: InputStream? = null
@@ -72,7 +105,7 @@ class ExcelManager @Inject constructor(
         }
     }
 
-    suspend fun importExcel(context: Context, uri: Uri): Result<Int> = withContext(Dispatchers.IO) {
+    suspend fun importExcel(context: Context, uri: Uri): Result<ExcelImportReport> = withContext(Dispatchers.IO) {
         var inputStream: InputStream? = null
         try {
             val existingTeachers = teacherRepository.getAllTeachers().first().toMutableList()
@@ -94,7 +127,10 @@ class ExcelManager @Inject constructor(
                 )
             }
 
+            val departmentName = "Bilgisayar Muhendisligi"
+            val departmentId = teacherRepository.ensureDepartment(departmentName)
             val coursesToInsert = mutableListOf<Course>()
+            val generatedCredentials = mutableListOf<GeneratedCredential>()
             var count = 0
 
             for (i in 1..sheet.lastRowNum) {
@@ -126,18 +162,49 @@ class ExcelManager @Inject constructor(
                     }
 
                     val teacherId: Int
+                    val teacherForAccount: Teacher
                     if (localExisting != null) {
                         teacherId = localExisting.id
+                        teacherForAccount = localExisting
                     } else {
                         teacherId = teacherRepository.getOrInsertTeacherOptimized(
-                            Teacher(name = name, surname = surname, title = title, department = "Bilgisayar Muhendisligi"),
+                            Teacher(
+                                name = name,
+                                surname = surname,
+                                title = title,
+                                department = departmentName,
+                                departmentId = departmentId
+                            ),
                             existingTeachers
                         ).toInt()
                         // Add to local list to prevent duplicates for subsequent rows
-                        existingTeachers.add(Teacher(id = teacherId, name = name, surname = surname, title = title))
+                        teacherForAccount = Teacher(
+                            id = teacherId,
+                            name = name,
+                            surname = surname,
+                            title = title,
+                            department = departmentName,
+                            departmentId = departmentId
+                        )
+                        existingTeachers.add(teacherForAccount)
                     }
 
-                    coursesToInsert.add(Course(code = courseCode, name = courseName, teacherId = teacherId))
+                    teacherRepository.createInitialTeacherAccountIfMissing(
+                        teacher = teacherForAccount,
+                        baseUsername = buildUsername(name, surname),
+                        initialPassword = generateInitialPassword()
+                    )?.let { generatedCredentials.add(it) }
+
+                    val courseId = "${courseCode}_${teacherId}"
+                    coursesToInsert.add(
+                        Course(
+                            id = courseId,
+                            code = courseCode,
+                            name = courseName,
+                            departmentId = departmentId,
+                            teacherId = teacherId
+                        )
+                    )
                     count++
                 }
             }
@@ -148,7 +215,7 @@ class ExcelManager @Inject constructor(
             }
 
             workbook.close()
-            Result.success(count)
+            Result.success(ExcelImportReport(count, generatedCredentials))
         } catch (e: Throwable) {
             Log.e(TAG, "Aktarım hatası", e)
             Result.failure(e)

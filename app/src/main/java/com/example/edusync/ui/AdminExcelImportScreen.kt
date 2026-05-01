@@ -104,6 +104,44 @@ fun AdminExcelImportScreen(
                     }
                 }
                 is ImportResult.Success -> {
+                    if (state.generatedCredentials.isNotEmpty()) {
+                        AlertDialog(
+                            onDismissRequest = { viewModel.clearImportState() },
+                            icon = { Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50)) },
+                            title = { Text("Basarili") },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text("${state.count} kayit basariyla sisteme aktarildi.")
+                                    Text(
+                                        "Olusturulan hoca hesaplari",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(max = 220.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        items(state.generatedCredentials) { credential ->
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                                                shape = MaterialTheme.shapes.small,
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Column(modifier = Modifier.padding(10.dp)) {
+                                                    Text(credential.teacherName, fontWeight = FontWeight.Bold)
+                                                    Text("Kullanici adi: ${credential.username}")
+                                                    Text("Gecici sifre: ${credential.initialPassword}")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            confirmButton = { TextButton(onClick = { viewModel.clearImportState() }) { Text("Tamam") } }
+                        )
+                    } else {
                     AlertDialog(
                         onDismissRequest = { viewModel.clearImportState() },
                         icon = { Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50)) },
@@ -112,6 +150,7 @@ fun AdminExcelImportScreen(
                         confirmButton = { TextButton(onClick = { viewModel.clearImportState() }) { Text("Tamam") } }
                     )
                 }
+                    }
                 is ImportResult.Error -> {
                     AlertDialog(
                         onDismissRequest = { viewModel.clearImportState() },

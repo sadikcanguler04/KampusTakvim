@@ -22,19 +22,49 @@ import com.example.edusync.ui.*
 @Composable
 fun AppNavigation() {
     val navController = rememberNavController()
+    val sessionViewModel: SessionViewModel = hiltViewModel()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val sessionUser by sessionViewModel.sessionUser.collectAsStateWithLifecycle()
 
     var currentUserRole by remember { mutableStateOf<UserRole?>(null) }
     var currentUsername by remember { mutableStateOf<String?>(null) }
     var loggedInTeacherId by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(sessionUser) {
+        val user = sessionUser ?: return@LaunchedEffect
+        if (currentUserRole != null) return@LaunchedEffect
+
+        currentUserRole = user.role
+        currentUsername = user.username
+        loggedInTeacherId = user.teacherId
+
+        when {
+            user.role == UserRole.ADMIN -> {
+                navController.navigate(Screen.AdminDashboard.route) {
+                    popUpTo(Screen.Login.route) { inclusive = true }
+                }
+            }
+            user.mustChangePassword -> {
+                navController.navigate(Screen.PasswordChange.createRoute(user.username)) {
+                    popUpTo(Screen.Login.route) { inclusive = true }
+                }
+            }
+            user.teacherId != null -> {
+                navController.navigate(Screen.TeacherHome.createRoute(user.teacherId!!)) {
+                    popUpTo(Screen.Login.route) { inclusive = true }
+                }
+            }
+        }
+    }
 
     // PDF Optimization: Use derivedStateOf for layout decisions to minimize recomposition scopes.
     val showAdminBar by remember(currentUserRole, currentDestination) {
         derivedStateOf {
             currentUserRole == UserRole.ADMIN && 
             currentDestination?.route != Screen.Login.route && 
-            currentDestination?.route != Screen.ActivateAccount.route
+            currentDestination?.route != Screen.ActivateAccount.route &&
+            currentDestination?.route != Screen.PasswordChange.route
         }
     }
     
@@ -42,7 +72,8 @@ fun AppNavigation() {
         derivedStateOf {
             currentUserRole == UserRole.TEACHER && 
             currentDestination?.route != Screen.Login.route && 
-            currentDestination?.route != Screen.ActivateAccount.route
+            currentDestination?.route != Screen.ActivateAccount.route &&
+            currentDestination?.route != Screen.PasswordChange.route
         }
     }
 
@@ -62,16 +93,22 @@ fun AppNavigation() {
         ) {
             composable(Screen.Login.route) {
                 LoginScreen(
-                    onLoginSuccess = { role, teacherId, username ->
-                        currentUserRole = role
-                        currentUsername = username
-                        if (role == UserRole.ADMIN) {
+                    onLoginSuccess = { user ->
+                        currentUserRole = user.role
+                        currentUsername = user.username
+                        loggedInTeacherId = user.teacherId
+                        if (user.role == UserRole.ADMIN) {
+                            sessionViewModel.save(user)
                             navController.navigate(Screen.AdminDashboard.route) {
                                 popUpTo(Screen.Login.route) { inclusive = true }
                             }
-                        } else if (teacherId != null) {
-                            loggedInTeacherId = teacherId
-                            navController.navigate(Screen.TeacherSchedule.createRoute(teacherId)) {
+                        } else if (user.teacherId != null && user.mustChangePassword) {
+                            navController.navigate(Screen.PasswordChange.createRoute(user.username)) {
+                                popUpTo(Screen.Login.route) { inclusive = true }
+                            }
+                        } else if (user.teacherId != null) {
+                            sessionViewModel.save(user)
+                            navController.navigate(Screen.TeacherHome.createRoute(user.teacherId!!)) {
                                 popUpTo(Screen.Login.route) { inclusive = true }
                             }
                         }
@@ -88,6 +125,52 @@ fun AppNavigation() {
                         }
                     },
                     onNavigateBack = { navController.popBackStack() }
+                )
+            }
+
+            composable(
+                route = Screen.PasswordChange.route,
+                arguments = listOf(navArgument("username") { type = NavType.StringType })
+            ) { backStackEntry ->
+                val username = backStackEntry.arguments?.getString("username") ?: ""
+                PasswordChangeScreen(
+                    username = username,
+                    onPasswordChanged = { user ->
+                        currentUserRole = user.role
+                        currentUsername = user.username
+                        loggedInTeacherId = user.teacherId
+                        sessionViewModel.save(user)
+                        user.teacherId?.let { teacherId ->
+                            navController.navigate(Screen.TeacherHome.createRoute(teacherId)) {
+                                popUpTo(Screen.PasswordChange.route) { inclusive = true }
+                            }
+                        }
+                    },
+                    onLogout = {
+                        currentUserRole = null
+                        currentUsername = null
+                        loggedInTeacherId = null
+                        sessionViewModel.clear()
+                        navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
+                    }
+                )
+            }
+
+            composable(
+                route = Screen.TeacherHome.route,
+                arguments = listOf(navArgument("teacherId") { type = NavType.IntType })
+            ) { backStackEntry ->
+                val teacherId = backStackEntry.arguments?.getInt("teacherId") ?: 0
+                TeacherHomeScreen(
+                    teacherId = teacherId,
+                    onOpenSchedule = { navController.navigate(Screen.TeacherSchedule.createRoute(teacherId)) },
+                    onLogout = {
+                        currentUserRole = null
+                        currentUsername = null
+                        loggedInTeacherId = null
+                        sessionViewModel.clear()
+                        navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
+                    }
                 )
             }
             
@@ -107,6 +190,7 @@ fun AppNavigation() {
                             currentUserRole = null
                             currentUsername = null
                             loggedInTeacherId = null
+                            sessionViewModel.clear()
                             navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
                         }
                     } else null
@@ -127,6 +211,7 @@ fun AppNavigation() {
                         currentUserRole = null
                         currentUsername = null
                         loggedInTeacherId = null
+                        sessionViewModel.clear()
                         navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
                     }
                 )
@@ -137,6 +222,8 @@ fun AppNavigation() {
                     onLogout = {
                         currentUserRole = null
                         currentUsername = null
+                        loggedInTeacherId = null
+                        sessionViewModel.clear()
                         navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
                     },
                     onNavigateToExcel = { navController.navigate(Screen.ExcelImport.route) },
@@ -257,13 +344,14 @@ fun TeacherBottomBar(
     
     NavigationBar {
         teacherBottomNavItems.forEach { screen ->
-            val route = if (screen is Screen.TeacherSchedule && loggedInTeacherId != null) {
-                screen.createRoute(loggedInTeacherId)
-            } else {
-                screen.route
+            val route = when {
+                screen is Screen.TeacherHome && loggedInTeacherId != null -> screen.createRoute(loggedInTeacherId)
+                screen is Screen.TeacherSchedule && loggedInTeacherId != null -> screen.createRoute(loggedInTeacherId)
+                else -> screen.route
             }
             
             val isSelected = currentDestination?.hierarchy?.any { it.route == screen.route } == true ||
+                    (screen is Screen.TeacherHome && currentDestination?.route?.startsWith("teacher_home") == true) ||
                     (screen is Screen.TeacherSchedule && currentDestination?.route?.startsWith("teacher_schedule") == true)
 
             NavigationBarItem(

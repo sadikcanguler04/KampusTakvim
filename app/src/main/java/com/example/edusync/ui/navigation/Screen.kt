@@ -19,11 +19,17 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object GlobalSchedule : Screen("global_schedule", "Genel Program", Icons.Default.DateRange)
     
     // Teacher Screens
+    object TeacherHome : Screen("teacher_home/{teacherId}", "Ana Sayfa", Icons.Default.Home) {
+        fun createRoute(teacherId: Int) = "teacher_home/$teacherId"
+    }
     object TeacherSchedule : Screen("teacher_schedule/{teacherId}", "Program", Icons.Default.CalendarMonth) {
         fun createRoute(teacherId: Int) = "teacher_schedule/$teacherId"
     }
     object TeacherMessages : Screen("teacher_messages", "Mesajlar", Icons.Default.Chat)
     object TeacherSettings : Screen("teacher_settings", "Ayarlar", Icons.Default.Settings)
+    object PasswordChange : Screen("password_change/{username}", "Sifre Degistir", Icons.Default.Password) {
+        fun createRoute(username: String) = "password_change/$username"
+    }
 
     // Common
     object ChatDetail : Screen("chat_detail/{targetUserId}", "Sohbet", Icons.Default.Chat) {
@@ -39,7 +45,6 @@ val adminBottomNavItems = listOf(
 )
 
 val teacherBottomNavItems = listOf(
-    Screen.TeacherSchedule,
-    Screen.TeacherMessages,
-    Screen.TeacherSettings
+    Screen.TeacherHome,
+    Screen.TeacherSchedule
 )
