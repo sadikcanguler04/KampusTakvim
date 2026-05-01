@@ -25,6 +25,7 @@ class TeacherRepository @Inject constructor(
     private val usersRef = database.getReference("users")
     private val departmentsRef = database.getReference("departments")
     private val temporaryCredentialsRef = database.getReference("temporary_credentials")
+    private val messagesRef = database.getReference("messages")
 
     private fun getTeacherKeyById(id: Int): String = id.toString()
 
@@ -240,17 +241,23 @@ class TeacherRepository @Inject constructor(
         initialPassword: String
     ): GeneratedCredential? = withContext(Dispatchers.IO) {
         val existingUsers = usersRef.get().await().children.mapNotNull { it.getValue(User::class.java) }
-        if (existingUsers.any { it.teacherId == teacher.id }) return@withContext null
+        val existingTeacherUser = existingUsers.find { it.teacherId == teacher.id }
+        if (existingTeacherUser != null && !existingTeacherUser.mustChangePassword) {
+            return@withContext null
+        }
 
-        val cleanBase = baseUsername.ifBlank { "hoca_${teacher.id}" }
-        var username = cleanBase
-        var suffix = 2
-        while (existingUsers.any { it.username == username }) {
-            username = "${cleanBase}${suffix++}"
+        val username = existingTeacherUser?.username ?: run {
+            val cleanBase = baseUsername.ifBlank { "hoca_${teacher.id}" }
+            var candidate = cleanBase
+            var suffix = 2
+            while (existingUsers.any { it.username == candidate }) {
+                candidate = "${cleanBase}${suffix++}"
+            }
+            candidate
         }
 
         val hashedPassword = withContext(Dispatchers.Default) { SecurityUtils.hashPassword(initialPassword) }
-        val user = User(
+        val user = (existingTeacherUser ?: User()).copy(
             username = username,
             password = hashedPassword,
             role = UserRole.TEACHER,
@@ -500,6 +507,54 @@ class TeacherRepository @Inject constructor(
         teachersRef.child(key).removeValue().await()
         availabilityRef.child(teacher.id.toString()).removeValue().await()
         proposalsRef.child(teacher.id.toString()).removeValue().await()
+    }
+
+    suspend fun deleteAllTeachers() = withContext(Dispatchers.IO) {
+        val teacherIds = teachersRef.get().await().children.mapNotNull { it.key?.toIntOrNull() }.toSet()
+
+        teachersRef.removeValue().await()
+        availabilityRef.removeValue().await()
+        proposalsRef.removeValue().await()
+        coursesRef.removeValue().await()
+        scheduleEntriesRef.removeValue().await()
+        temporaryCredentialsRef.removeValue().await()
+
+        val usersSnapshot = usersRef.get().await()
+        val userUpdates = mutableMapOf<String, Any?>()
+        usersSnapshot.children.forEach { child ->
+            val user = child.getValue(User::class.java)
+            if (user?.teacherId in teacherIds || user?.role == UserRole.TEACHER) {
+                child.key?.let { userUpdates[it] = null }
+            }
+        }
+        if (userUpdates.isNotEmpty()) {
+            usersRef.updateChildren(userUpdates).await()
+        }
+    }
+
+    suspend fun resetApplicationData() = withContext(Dispatchers.IO) {
+        teachersRef.removeValue().await()
+        coursesRef.removeValue().await()
+        availabilityRef.removeValue().await()
+        proposalsRef.removeValue().await()
+        codesRef.removeValue().await()
+        departmentsRef.removeValue().await()
+        classroomsRef.removeValue().await()
+        scheduleEntriesRef.removeValue().await()
+        temporaryCredentialsRef.removeValue().await()
+        messagesRef.removeValue().await()
+
+        val usersSnapshot = usersRef.get().await()
+        val userUpdates = mutableMapOf<String, Any?>()
+        usersSnapshot.children.forEach { child ->
+            val user = child.getValue(User::class.java)
+            if (user?.role != UserRole.ADMIN) {
+                child.key?.let { userUpdates[it] = null }
+            }
+        }
+        if (userUpdates.isNotEmpty()) {
+            usersRef.updateChildren(userUpdates).await()
+        }
     }
 
     suspend fun insertCourse(course: Course) = withContext(Dispatchers.IO) {

@@ -12,9 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -31,7 +29,6 @@ import com.example.edusync.ui.theme.*
 fun AdminDashboardScreen(
     onLogout: () -> Unit,
     onNavigateToExcel: () -> Unit,
-    onNavigateToCodes: () -> Unit,
     onNavigateToClassrooms: () -> Unit = {},
     onNavigateToAssignments: () -> Unit = {},
     viewModel: AdminViewModel = hiltViewModel()
@@ -39,6 +36,9 @@ fun AdminDashboardScreen(
     val unassignedTeachers by viewModel.unassignedTeachers.collectAsState()
     val unassignedCourses by viewModel.unassignedCourses.collectAsState()
     val availableClassrooms by viewModel.availableClassrooms.collectAsState()
+    val isResetting by viewModel.isResetting.collectAsState()
+    val resetMessage by viewModel.resetMessage.collectAsState()
+    var showResetDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -96,11 +96,11 @@ fun AdminDashboardScreen(
                         }
                         Box(modifier = Modifier.weight(1f)) {
                             QuickActionCard(
-                                title = "Kayıt Kodları",
-                                subtitle = "Hoca Yetkilendirme",
-                                icon = Icons.Default.VpnKey,
-                                color = WarningOrange,
-                                onClick = onNavigateToCodes
+                                title = "Sistemi Sifirla",
+                                subtitle = "Tum veriyi temizle",
+                                icon = Icons.Default.DeleteForever,
+                                color = ErrorRed,
+                                onClick = { showResetDialog = true }
                             )
                         }
                     }
@@ -240,6 +240,48 @@ fun AdminDashboardScreen(
             }
 
             item { Spacer(Modifier.height(16.dp)) }
+        }
+
+        if (showResetDialog) {
+            AlertDialog(
+                onDismissRequest = { if (!isResetting) showResetDialog = false },
+                title = { Text("Sistemi Sifirla") },
+                text = { Text("Excel importlari, hocalar, dersler, siniflar, atamalar, mesajlar ve gecici sifreler silinecek. Admin hesabi korunacak.") },
+                confirmButton = {
+                    Button(
+                        enabled = !isResetting,
+                        onClick = {
+                            viewModel.resetApplicationData()
+                            showResetDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = ErrorRed)
+                    ) {
+                        if (isResetting) {
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            Text("SIFIRLA")
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(enabled = !isResetting, onClick = { showResetDialog = false }) {
+                        Text("IPTAL")
+                    }
+                }
+            )
+        }
+
+        resetMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = { viewModel.clearResetMessage() },
+                title = { Text("Bilgi") },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.clearResetMessage() }) {
+                        Text("Tamam")
+                    }
+                }
+            )
         }
     }
 }

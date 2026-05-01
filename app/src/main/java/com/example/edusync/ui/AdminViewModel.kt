@@ -28,6 +28,12 @@ class AdminViewModel @Inject constructor(
 
     private var currentUri: Uri? = null
 
+    private val _isResetting = MutableStateFlow(false)
+    val isResetting = _isResetting.asStateFlow()
+
+    private val _resetMessage = MutableStateFlow<String?>(null)
+    val resetMessage = _resetMessage.asStateFlow()
+
     // --- Existing Flows ---
     val teachers = teacherRepository.getAllTeachers().stateIn(
         viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
@@ -286,5 +292,25 @@ class AdminViewModel @Inject constructor(
         _importState.value = null
         _excelPreview.value = null
         currentUri = null
+    }
+
+    fun resetApplicationData() {
+        if (_isResetting.value) return
+        viewModelScope.launch {
+            _isResetting.value = true
+            try {
+                teacherRepository.resetApplicationData()
+                _resetMessage.value = "Sistem fabrika ayarlarina donduruldu. Admin hesabi korundu."
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                _resetMessage.value = "Sifirlama basarisiz: ${e.localizedMessage}"
+            } finally {
+                _isResetting.value = false
+            }
+        }
+    }
+
+    fun clearResetMessage() {
+        _resetMessage.value = null
     }
 }

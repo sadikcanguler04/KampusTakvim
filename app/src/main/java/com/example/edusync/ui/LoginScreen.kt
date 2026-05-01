@@ -25,7 +25,6 @@ import com.example.edusync.ui.theme.*
 @Composable
 fun LoginScreen(
     onLoginSuccess: (User) -> Unit,
-    onNavigateToActivation: () -> Unit,
     viewModel: LoginViewModel = hiltViewModel()
 ) {
     var username by remember { mutableStateOf("") }
@@ -139,19 +138,6 @@ fun LoginScreen(
                             Text("GİRİŞ YAP", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         }
                     }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            TextButton(
-                onClick = onNavigateToActivation,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isLoading
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("Yeni hoca mısınız?", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
-                    Text("Kayıt Kodunla Hesabını Aktive Et", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
             }
 

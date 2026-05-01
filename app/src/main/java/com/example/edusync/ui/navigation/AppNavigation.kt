@@ -112,8 +112,7 @@ fun AppNavigation() {
                                 popUpTo(Screen.Login.route) { inclusive = true }
                             }
                         }
-                    },
-                    onNavigateToActivation = { navController.navigate(Screen.ActivateAccount.route) }
+                    }
                 )
             }
 
@@ -227,7 +226,6 @@ fun AppNavigation() {
                         navController.navigate(Screen.Login.route) { popUpTo(0) { inclusive = true } }
                     },
                     onNavigateToExcel = { navController.navigate(Screen.ExcelImport.route) },
-                    onNavigateToCodes = { navController.navigate(Screen.VerificationCodes.route) },
                     onNavigateToClassrooms = { navController.navigate(Screen.Classrooms.route) },
                     onNavigateToAssignments = { navController.navigate(Screen.Assignments.route) }
                 )

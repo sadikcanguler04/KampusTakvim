@@ -30,6 +30,7 @@ fun TeacherManagementScreen(
     val teachers by viewModel.teachers.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var teacherToDelete by remember { mutableStateOf<Teacher?>(null) }
+    var showDeleteAllDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -39,6 +40,18 @@ fun TeacherManagementScreen(
                     if (onNavigateBack != null) {
                         IconButton(onClick = onNavigateBack) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Geri")
+                        }
+                    }
+                },
+                actions = {
+                    if (teachers.isNotEmpty()) {
+                        TextButton(
+                            onClick = { showDeleteAllDialog = true },
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text("Tumunu Sil")
                         }
                     }
                 }
@@ -96,6 +109,26 @@ fun TeacherManagementScreen(
                 },
                 dismissButton = {
                     TextButton(onClick = { teacherToDelete = null }) { Text("İPTAL") }
+                }
+            )
+        }
+
+        if (showDeleteAllDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteAllDialog = false },
+                title = { Text("Tum Hocalari Sil") },
+                text = { Text("Tum hocalar, hoca hesaplari, gecici sifreler, dersler ve program atamalari silinecek. Emin misiniz?") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            viewModel.deleteAllTeachers()
+                            showDeleteAllDialog = false
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) { Text("TUMUNU SIL") }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteAllDialog = false }) { Text("IPTAL") }
                 }
             )
         }

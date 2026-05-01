@@ -264,6 +264,16 @@ class TeacherViewModel @Inject constructor(
         }
     }
 
+    fun deleteAllTeachers() {
+        viewModelScope.launch {
+            try {
+                repository.deleteAllTeachers()
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+            }
+        }
+    }
+
     // --- TEACHER ACTIONS ---
 
     fun approveAdminProposal() {
