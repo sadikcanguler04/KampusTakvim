@@ -12,6 +12,16 @@ Project URL: `https://kampustakvim-default-rtdb.europe-west1.firebasedatabase.ap
 - `teacherId`: Linked lecturer id for teacher accounts.
 - `mustChangePassword`: `true` for auto-generated first-login accounts.
 
+### `temporary_credentials/{teacherId}`
+
+- `teacherId`: Linked lecturer id.
+- `teacherName`: Display name shown to admin.
+- `username`: Auto-generated teacher login name.
+- `temporaryPassword`: AES-encrypted temporary password while first login is pending.
+- `createdAt`: Creation timestamp.
+- `consumed`: `true` after the teacher changes the temporary password.
+- `consumedAt`: Password-change timestamp.
+
 ### `teachers/{teacherId}`
 
 - `id`: Lecturer id.

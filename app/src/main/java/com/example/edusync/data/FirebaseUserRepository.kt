@@ -17,6 +17,7 @@ class FirebaseUserRepository @Inject constructor(
 ) {
     private val usersRef = database.getReference("users")
     private val codesRef = database.getReference("verification_codes")
+    private val temporaryCredentialsRef = database.getReference("temporary_credentials")
 
     suspend fun getUserByUsername(username: String): User? = withContext(Dispatchers.IO) {
         val snapshot = usersRef.child(username).get().await()
@@ -36,6 +37,15 @@ class FirebaseUserRepository @Inject constructor(
         val newHash = withContext(Dispatchers.Default) { SecurityUtils.hashPassword(newPassword) }
         val updatedUser = user.copy(password = newHash, mustChangePassword = false)
         usersRef.child(username).setValue(updatedUser).await()
+        user.teacherId?.let { teacherId ->
+            temporaryCredentialsRef.child(teacherId.toString()).updateChildren(
+                mapOf(
+                    "temporaryPassword" to "",
+                    "consumed" to true,
+                    "consumedAt" to System.currentTimeMillis()
+                )
+            ).await()
+        }
         updatedUser
     }
 

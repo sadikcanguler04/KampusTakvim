@@ -24,6 +24,7 @@ class TeacherRepository @Inject constructor(
     private val codesRef = database.getReference("verification_codes")
     private val usersRef = database.getReference("users")
     private val departmentsRef = database.getReference("departments")
+    private val temporaryCredentialsRef = database.getReference("temporary_credentials")
 
     private fun getTeacherKeyById(id: Int): String = id.toString()
 
@@ -208,6 +209,31 @@ class TeacherRepository @Inject constructor(
         awaitClose { departmentsRef.removeEventListener(listener) }
     }.distinctUntilChanged().flowOn(Dispatchers.IO)
 
+    fun getTemporaryCredentials(): Flow<List<TemporaryCredential>> = callbackFlow {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                launch(Dispatchers.Default) {
+                    val list = snapshot.children
+                        .mapNotNull { it.getValue(TemporaryCredential::class.java) }
+                        .map { credential ->
+                            credential.copy(
+                                temporaryPassword = if (credential.consumed) {
+                                    ""
+                                } else {
+                                    SecurityUtils.decrypt(credential.temporaryPassword)
+                                }
+                            )
+                        }
+                        .sortedWith(compareBy<TemporaryCredential> { it.consumed }.thenByDescending { it.createdAt })
+                    trySend(list)
+                }
+            }
+            override fun onCancelled(error: DatabaseError) { close(error.toException()) }
+        }
+        temporaryCredentialsRef.addValueEventListener(listener)
+        awaitClose { temporaryCredentialsRef.removeEventListener(listener) }
+    }.distinctUntilChanged().flowOn(Dispatchers.IO)
+
     suspend fun createInitialTeacherAccountIfMissing(
         teacher: Teacher,
         baseUsername: String,
@@ -232,11 +258,22 @@ class TeacherRepository @Inject constructor(
             mustChangePassword = true
         )
         usersRef.child(username).setValue(user).await()
+        val teacherName = listOf(teacher.title, teacher.name, teacher.surname)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+        val temporaryCredential = TemporaryCredential(
+            teacherId = teacher.id,
+            teacherName = teacherName,
+            username = username,
+            temporaryPassword = SecurityUtils.encrypt(initialPassword),
+            createdAt = System.currentTimeMillis(),
+            consumed = false,
+            consumedAt = 0L
+        )
+        temporaryCredentialsRef.child(teacher.id.toString()).setValue(temporaryCredential).await()
 
         GeneratedCredential(
-            teacherName = listOf(teacher.title, teacher.name, teacher.surname)
-                .filter { it.isNotBlank() }
-                .joinToString(" "),
+            teacherName = teacherName,
             username = username,
             initialPassword = initialPassword
         )

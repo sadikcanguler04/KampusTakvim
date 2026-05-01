@@ -33,6 +33,10 @@ class AdminViewModel @Inject constructor(
         viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
     )
 
+    val temporaryCredentials = teacherRepository.getTemporaryCredentials().stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
+    )
+
     // PDF Optimization: Use Dispatchers.Default for heavy mapping and lookup
     val verificationCodes = userRepository.getAllVerificationCodes()
         .combine(teacherRepository.getAllTeachers()) { codes, allTeachers ->

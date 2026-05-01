@@ -98,6 +98,17 @@ data class GeneratedCredential(
 )
 
 @Stable
+data class TemporaryCredential(
+    var teacherId: Int = 0,
+    var teacherName: String = "",
+    var username: String = "",
+    var temporaryPassword: String = "",
+    var createdAt: Long = 0L,
+    var consumed: Boolean = false,
+    var consumedAt: Long = 0L
+)
+
+@Stable
 data class ExcelImportReport(
     val count: Int = 0,
     val generatedCredentials: List<GeneratedCredential> = emptyList()

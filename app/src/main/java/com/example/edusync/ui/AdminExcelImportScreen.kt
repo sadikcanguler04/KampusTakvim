@@ -11,6 +11,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.PendingActions
+import androidx.compose.material.icons.filled.TaskAlt
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.edusync.data.TemporaryCredential
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -31,6 +35,7 @@ fun AdminExcelImportScreen(
     val context = LocalContext.current
     val importState by viewModel.importState.collectAsState(initial = null)
     val previewItems by viewModel.excelPreview.collectAsState(initial = null)
+    val temporaryCredentials by viewModel.temporaryCredentials.collectAsState(initial = emptyList())
     
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -58,7 +63,7 @@ fun AdminExcelImportScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (currentPreview == null) {
-                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.weight(0.45f))
                     Icon(Icons.Default.FileUpload, null, modifier = Modifier.size(100.dp), tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(24.dp))
                     Text("Ders ve Hoca Listesi Yükle", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
@@ -67,7 +72,9 @@ fun AdminExcelImportScreen(
                     Button(onClick = { launcher.launch("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") }, modifier = Modifier.fillMaxWidth().height(56.dp)) {
                         Text("DOSYA SEÇ")
                     }
-                    Spacer(modifier = Modifier.weight(1.2f))
+                    Spacer(modifier = Modifier.height(24.dp))
+                    TemporaryCredentialsSection(temporaryCredentials)
+                    Spacer(modifier = Modifier.weight(0.35f))
                 } else {
                     Text("Excel Önizleme (İlk 5 Satır)", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.height(16.dp))
@@ -160,6 +167,83 @@ fun AdminExcelImportScreen(
                     )
                 }
                 else -> {}
+            }
+        }
+    }
+}
+
+@Composable
+private fun TemporaryCredentialsSection(credentials: List<TemporaryCredential>) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Key, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Gecici hoca hesaplari",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if (credentials.isEmpty()) {
+                Text(
+                    "Excel import sonrasi olusan gecici hesaplar burada gorunecek.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color.Gray
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 280.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(credentials) { credential ->
+                        TemporaryCredentialRow(credential)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TemporaryCredentialRow(credential: TemporaryCredential) {
+    val statusText = if (credential.consumed) {
+        "Sifre degistirildi - hesap aktif"
+    } else {
+        "Ilk giris bekleniyor"
+    }
+    val statusColor = if (credential.consumed) Color(0xFF2E7D32) else Color(0xFFEF6C00)
+    val statusIcon = if (credential.consumed) Icons.Default.TaskAlt else Icons.Default.PendingActions
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = statusColor.copy(alpha = 0.08f),
+        shape = MaterialTheme.shapes.small
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(statusIcon, contentDescription = null, tint = statusColor, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(statusText, color = statusColor, fontWeight = FontWeight.Bold)
+            }
+            Text(credential.teacherName, fontWeight = FontWeight.Bold)
+            Text("Kullanici adi: ${credential.username}")
+            if (!credential.consumed) {
+                Text("Gecici sifre: ${credential.temporaryPassword}")
             }
         }
     }
