@@ -82,7 +82,7 @@ fun AppNavigation() {
             if (showAdminBar) {
                 AdminBottomBar(navController, currentDestination)
             } else if (showTeacherBar) {
-                TeacherBottomBar(navController, currentDestination, loggedInTeacherId)
+                TeacherBottomBar(navController, currentDestination, loggedInTeacherId, currentUsername)
             }
         }
     ) { innerPadding ->
@@ -336,8 +336,14 @@ fun TeacherBottomBar(
     navController: NavHostController, 
     currentDestination: NavDestination?,
     loggedInTeacherId: Int?,
+    currentUsername: String?,
     chatViewModel: ChatViewModel = hiltViewModel()
 ) {
+    LaunchedEffect(currentUsername) {
+        if (!currentUsername.isNullOrBlank()) {
+            chatViewModel.initUser(currentUsername)
+        }
+    }
     val totalUnreadCount by chatViewModel.totalUnreadCount.collectAsStateWithLifecycle()
     
     NavigationBar {

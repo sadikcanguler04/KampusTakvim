@@ -46,5 +46,6 @@ val adminBottomNavItems = listOf(
 
 val teacherBottomNavItems = listOf(
     Screen.TeacherHome,
-    Screen.TeacherSchedule
+    Screen.TeacherSchedule,
+    Screen.TeacherMessages
 )
