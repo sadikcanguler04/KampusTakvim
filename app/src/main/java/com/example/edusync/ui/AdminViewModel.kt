@@ -139,6 +139,10 @@ class AdminViewModel @Inject constructor(
         viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
     )
 
+    val assignmentRequests = teacherRepository.getAssignmentRequests().stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
+    )
+
     private val _assignmentError = MutableStateFlow<String?>(null)
     val assignmentError = _assignmentError.asStateFlow()
 
@@ -194,6 +198,7 @@ class AdminViewModel @Inject constructor(
                         classroom = classroomId
                     )
                 )
+                teacherRepository.supersedeActiveAssignmentRequests(teacherId, courseCode)
 
                 _assignmentError.value = null
                 _assignmentSuccess.value = true
@@ -238,10 +243,26 @@ class AdminViewModel @Inject constructor(
                         classroom = classroomId
                     )
                 )
+                val note = "$courseCode dersi icin yeni program onerisi gonderildi."
+                val teacherName = teachers.value.find { it.id == teacherId }?.let { teacher ->
+                    listOf(teacher.title, teacher.name, teacher.surname)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" ")
+                }.orEmpty().ifBlank { "Hoca #$teacherId" }
+                teacherRepository.createAssignmentRequest(
+                    teacherId = teacherId,
+                    teacherName = teacherName,
+                    courseCode = courseCode,
+                    courseName = courseName,
+                    classroomId = classroomId,
+                    day = day,
+                    timeSlot = timeSlot,
+                    adminNote = note
+                )
                 teacherRepository.updateScheduleStatus(
                     teacherId = teacherId,
                     status = ScheduleStatus.ADMIN_PROPOSAL,
-                    adminNote = "$courseCode dersi icin yeni program onerisi gonderildi.",
+                    adminNote = note,
                     teacherNote = ""
                 )
 

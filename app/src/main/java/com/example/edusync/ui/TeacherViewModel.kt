@@ -281,6 +281,7 @@ class TeacherViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 repository.applyProposal(id)
+                repository.markPendingAssignmentRequestsApproved(id)
                 repository.updateScheduleStatus(id, ScheduleStatus.APPROVED, adminNote = "", teacherNote = "")
             } catch (e: Exception) {
                 if (e is CancellationException) throw e
@@ -293,6 +294,7 @@ class TeacherViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 repository.discardProposal(id)
+                repository.markPendingAssignmentRequestsRejected(id, note)
                 repository.updateScheduleStatus(id, ScheduleStatus.REJECTED, adminNote = "", teacherNote = note)
             } catch (e: Exception) {
                 if (e is CancellationException) throw e

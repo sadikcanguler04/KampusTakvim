@@ -21,6 +21,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.edusync.data.AssignmentRequest
+import com.example.edusync.data.AssignmentRequestStatus
 import com.example.edusync.data.Classroom
 import com.example.edusync.data.Course
 import com.example.edusync.data.Teacher
@@ -44,6 +46,7 @@ fun AssignmentScreen(
     val teachers by viewModel.teachers.collectAsState()
     val courses by viewModel.allCourses.collectAsState()
     val classrooms by viewModel.classrooms.collectAsState()
+    val assignmentRequests by viewModel.assignmentRequests.collectAsState()
     val error by viewModel.assignmentError.collectAsState()
     val success by viewModel.assignmentSuccess.collectAsState()
     val isAssigning by viewModel.isAssigning.collectAsState()
@@ -58,6 +61,13 @@ fun AssignmentScreen(
         "08:30 - 09:20", "09:30 - 10:20", "10:30 - 11:20", "11:30 - 12:20",
         "13:30 - 14:20", "14:30 - 15:20", "15:30 - 16:20", "16:30 - 17:20"
     )
+    val activeAssignmentRequests = remember(assignmentRequests) {
+        assignmentRequests.filter {
+            it.status == AssignmentRequestStatus.PENDING || it.status == AssignmentRequestStatus.REJECTED
+        }
+    }
+    val pendingRequestCount = activeAssignmentRequests.count { it.status == AssignmentRequestStatus.PENDING }
+    val rejectedRequestCount = activeAssignmentRequests.count { it.status == AssignmentRequestStatus.REJECTED }
 
     LaunchedEffect(success) {
         if (success) {
@@ -104,7 +114,10 @@ fun AssignmentScreen(
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = SuccessGreen)
             ) {
-                Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.padding(20.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Surface(
                         color = Color.White.copy(alpha = 0.2f),
                         shape = RoundedCornerShape(12.dp),
@@ -113,14 +126,31 @@ fun AssignmentScreen(
                         Icon(Icons.Default.Assignment, null, tint = Color.White, modifier = Modifier.padding(12.dp))
                     }
                     Spacer(Modifier.width(16.dp))
-                    Column {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text("Toplam Atama", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
-                        Text("${scheduleEntries.size} Ders Atandı", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Text("${scheduleEntries.size} Kesin Ders", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                        Spacer(Modifier.height(4.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text(
+                                "Bekleyen: $pendingRequestCount",
+                                color = Color.White.copy(alpha = 0.9f),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            if (rejectedRequestCount > 0) {
+                                Text(
+                                    "Reddedilen: $rejectedRequestCount",
+                                    color = Color.White.copy(alpha = 0.9f),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
                     }
                 }
             }
 
-            if (scheduleEntries.isEmpty()) {
+            if (scheduleEntries.isEmpty() && activeAssignmentRequests.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Default.Assignment, null, tint = Color.LightGray, modifier = Modifier.size(64.dp))
@@ -178,6 +208,25 @@ fun AssignmentScreen(
                                     Icon(Icons.Default.Delete, "Sil", tint = ErrorRed.copy(alpha = 0.7f))
                                 }
                             }
+                        }
+                    }
+                    if (activeAssignmentRequests.isNotEmpty()) {
+                        item {
+                            Text(
+                                "Hoca Onayi Bekleyenler",
+                                modifier = Modifier.padding(top = if (scheduleEntries.isEmpty()) 0.dp else 10.dp, bottom = 2.dp),
+                                color = TextDark,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                        }
+                        items(items = activeAssignmentRequests, key = { "request_${it.id}" }) { request ->
+                            AssignmentRequestCard(
+                                request = request,
+                                teachers = teachers,
+                                dayShorts = dayShorts,
+                                timeSlots = timeSlots
+                            )
                         }
                     }
                 }
@@ -254,6 +303,89 @@ fun AssignmentScreen(
                 },
                 dismissButton = { TextButton(onClick = { showDeleteDialog = null }) { Text("İPTAL") } }
             )
+        }
+    }
+}
+
+@Composable
+private fun AssignmentRequestCard(
+    request: AssignmentRequest,
+    teachers: List<Teacher>,
+    dayShorts: List<String>,
+    timeSlots: List<String>
+) {
+    val isRejected = request.status == AssignmentRequestStatus.REJECTED
+    val statusColor = if (isRejected) ErrorRed else Color(0xFFFFA000)
+    val statusText = if (isRejected) "Hoca reddetti" else "Hocadan onay bekleniyor"
+    val teacherName = teachers.find { it.id == request.teacherId }?.let { teacher ->
+        listOf(teacher.title, teacher.name, teacher.surname)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+    }.orEmpty().ifBlank { request.teacherName.ifBlank { "Hoca #${request.teacherId}" } }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                color = statusColor,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.size(52.dp)
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    Text(dayShorts.getOrElse(request.day) { "?" }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(timeSlots.getOrElse(request.timeSlot) { "?" }, color = Color.White.copy(alpha = 0.8f), fontSize = 10.sp)
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "${request.courseCode} - ${request.courseName}",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = TextDark,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(teacherName, fontSize = 12.sp, color = Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.MeetingRoom, null, tint = PrimaryBlue, modifier = Modifier.size(12.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(request.classroomId, fontSize = 12.sp, color = PrimaryBlue, fontWeight = FontWeight.Medium)
+                }
+                Spacer(Modifier.height(6.dp))
+                Surface(
+                    color = statusColor.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text(
+                        statusText,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        color = statusColor,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                if (isRejected && request.teacherNote.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Geri bildirim: ${request.teacherNote}",
+                        color = ErrorRed,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            }
         }
     }
 }

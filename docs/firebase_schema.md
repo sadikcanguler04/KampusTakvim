@@ -59,6 +59,17 @@ Project URL: `https://kampustakvim-default-rtdb.europe-west1.firebasedatabase.ap
 - `day`: Weekday index, Monday is `0`.
 - `timeSlot`: Slot index.
 
+### `assignment_requests/{requestId}`
+
+Admin-to-teacher assignment approval tracking.
+
+- `teacherId`, `teacherName`: Lecturer receiving the request.
+- `courseCode`, `courseName`: Requested course.
+- `classroomId`, `day`, `timeSlot`: Requested slot.
+- `status`: `PENDING`, `APPROVED`, `REJECTED`, or `SUPERSEDED`.
+- `adminNote`, `teacherNote`: AES-encrypted feedback text.
+- `createdAt`, `updatedAt`: Millisecond timestamps.
+
 ### `availability/{teacherId}/{day}_{timeSlot}`
 
 Legacy teacher calendar mirror used by teacher and global schedule screens.

@@ -26,6 +26,7 @@ class TeacherRepository @Inject constructor(
     private val departmentsRef = database.getReference("departments")
     private val temporaryCredentialsRef = database.getReference("temporary_credentials")
     private val messagesRef = database.getReference("messages")
+    private val assignmentRequestsRef = database.getReference("assignment_requests")
 
     private fun getTeacherKeyById(id: Int): String = id.toString()
 
@@ -166,6 +167,135 @@ class TeacherRepository @Inject constructor(
         }
         
         teachersRef.child(key).updateChildren(updates).await()
+    }
+
+    private fun assignmentRequestSortOrder(status: AssignmentRequestStatus): Int = when (status) {
+        AssignmentRequestStatus.PENDING -> 0
+        AssignmentRequestStatus.REJECTED -> 1
+        AssignmentRequestStatus.APPROVED -> 2
+        AssignmentRequestStatus.SUPERSEDED -> 3
+    }
+
+    fun getAssignmentRequests(): Flow<List<AssignmentRequest>> = callbackFlow {
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                launch(Dispatchers.Default) {
+                    val list = snapshot.children
+                        .mapNotNull { it.getValue(AssignmentRequest::class.java) }
+                        .map { request ->
+                            request.copy(
+                                courseName = SecurityUtils.decrypt(request.courseName),
+                                adminNote = SecurityUtils.decrypt(request.adminNote),
+                                teacherNote = SecurityUtils.decrypt(request.teacherNote)
+                            )
+                        }
+                        .sortedWith(
+                            compareBy<AssignmentRequest> { assignmentRequestSortOrder(it.status) }
+                                .thenByDescending { it.updatedAt.coerceAtLeast(it.createdAt) }
+                        )
+                    trySend(list)
+                }
+            }
+            override fun onCancelled(error: DatabaseError) { close(error.toException()) }
+        }
+        assignmentRequestsRef.addValueEventListener(listener)
+        awaitClose { assignmentRequestsRef.removeEventListener(listener) }
+    }.distinctUntilChanged().flowOn(Dispatchers.IO)
+
+    suspend fun createAssignmentRequest(
+        teacherId: Int,
+        teacherName: String,
+        courseCode: String,
+        courseName: String,
+        classroomId: String,
+        day: Int,
+        timeSlot: Int,
+        adminNote: String = ""
+    ) = withContext(Dispatchers.IO) {
+        supersedeActiveAssignmentRequests(teacherId, courseCode)
+
+        val now = System.currentTimeMillis()
+        val id = assignmentRequestsRef.push().key ?: "${teacherId}_${courseCode}_${day}_${timeSlot}_$now"
+        val encryptedRequest = withContext(Dispatchers.Default) {
+            AssignmentRequest(
+                id = id,
+                teacherId = teacherId,
+                teacherName = teacherName,
+                courseCode = courseCode,
+                courseName = SecurityUtils.encrypt(courseName),
+                classroomId = classroomId,
+                day = day,
+                timeSlot = timeSlot,
+                status = AssignmentRequestStatus.PENDING,
+                adminNote = SecurityUtils.encrypt(adminNote),
+                teacherNote = "",
+                createdAt = now,
+                updatedAt = now
+            )
+        }
+
+        assignmentRequestsRef.child(id).setValue(encryptedRequest).await()
+    }
+
+    suspend fun supersedeActiveAssignmentRequests(teacherId: Int, courseCode: String) = withContext(Dispatchers.IO) {
+        val snapshot = assignmentRequestsRef.get().await()
+        val now = System.currentTimeMillis()
+        val updates = mutableMapOf<String, Any?>()
+
+        snapshot.children.forEach { child ->
+            val request = child.getValue(AssignmentRequest::class.java) ?: return@forEach
+            val isActive = request.status == AssignmentRequestStatus.PENDING || request.status == AssignmentRequestStatus.REJECTED
+            if (request.teacherId == teacherId && request.courseCode == courseCode && isActive) {
+                val key = child.key ?: return@forEach
+                updates["$key/status"] = AssignmentRequestStatus.SUPERSEDED.name
+                updates["$key/updatedAt"] = now
+            }
+        }
+
+        if (updates.isNotEmpty()) {
+            assignmentRequestsRef.updateChildren(updates).await()
+        }
+    }
+
+    suspend fun markPendingAssignmentRequestsApproved(teacherId: Int) = withContext(Dispatchers.IO) {
+        val snapshot = assignmentRequestsRef.get().await()
+        val now = System.currentTimeMillis()
+        val updates = mutableMapOf<String, Any?>()
+
+        snapshot.children.forEach { child ->
+            val request = child.getValue(AssignmentRequest::class.java) ?: return@forEach
+            if (request.teacherId == teacherId && request.status == AssignmentRequestStatus.PENDING) {
+                val key = child.key ?: return@forEach
+                updates["$key/status"] = AssignmentRequestStatus.APPROVED.name
+                updates["$key/teacherNote"] = ""
+                updates["$key/updatedAt"] = now
+            }
+        }
+
+        if (updates.isNotEmpty()) {
+            assignmentRequestsRef.updateChildren(updates).await()
+        }
+    }
+
+    suspend fun markPendingAssignmentRequestsRejected(teacherId: Int, teacherNote: String) = withContext(Dispatchers.IO) {
+        val snapshot = assignmentRequestsRef.get().await()
+        val now = System.currentTimeMillis()
+        val encryptedNote = withContext(Dispatchers.Default) { SecurityUtils.encrypt(teacherNote) }
+        val updates = mutableMapOf<String, Any?>()
+
+        snapshot.children.forEach { child ->
+            val request = child.getValue(AssignmentRequest::class.java) ?: return@forEach
+            if (request.teacherId == teacherId && request.status == AssignmentRequestStatus.PENDING) {
+                val key = child.key ?: return@forEach
+                updates["$key/status"] = AssignmentRequestStatus.REJECTED.name
+                updates["$key/teacherNote"] = encryptedNote
+                updates["$key/updatedAt"] = now
+            }
+        }
+
+        if (updates.isNotEmpty()) {
+            assignmentRequestsRef.updateChildren(updates).await()
+        }
     }
 
     private fun normalize(t: String) = t.lowercase(Locale("tr")).replace('ı','i').replace('ş','s').replace('ğ','g').replace('ü','u').replace('ö','o').replace('ç','c').trim()
@@ -515,6 +645,18 @@ class TeacherRepository @Inject constructor(
         teachersRef.child(key).removeValue().await()
         availabilityRef.child(teacher.id.toString()).removeValue().await()
         proposalsRef.child(teacher.id.toString()).removeValue().await()
+
+        val requestSnapshot = assignmentRequestsRef.get().await()
+        val requestUpdates = mutableMapOf<String, Any?>()
+        requestSnapshot.children.forEach { child ->
+            val request = child.getValue(AssignmentRequest::class.java)
+            if (request?.teacherId == teacher.id) {
+                child.key?.let { requestUpdates[it] = null }
+            }
+        }
+        if (requestUpdates.isNotEmpty()) {
+            assignmentRequestsRef.updateChildren(requestUpdates).await()
+        }
     }
 
     suspend fun deleteAllTeachers() = withContext(Dispatchers.IO) {
@@ -526,6 +668,7 @@ class TeacherRepository @Inject constructor(
         coursesRef.removeValue().await()
         scheduleEntriesRef.removeValue().await()
         temporaryCredentialsRef.removeValue().await()
+        assignmentRequestsRef.removeValue().await()
 
         val usersSnapshot = usersRef.get().await()
         val userUpdates = mutableMapOf<String, Any?>()
@@ -551,6 +694,7 @@ class TeacherRepository @Inject constructor(
         scheduleEntriesRef.removeValue().await()
         temporaryCredentialsRef.removeValue().await()
         messagesRef.removeValue().await()
+        assignmentRequestsRef.removeValue().await()
 
         val usersSnapshot = usersRef.get().await()
         val userUpdates = mutableMapOf<String, Any?>()

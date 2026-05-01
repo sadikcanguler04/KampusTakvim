@@ -7,6 +7,8 @@ enum class UserRole { ADMIN, TEACHER }
 
 enum class ScheduleStatus { PENDING, APPROVED, REJECTED, ADMIN_PROPOSAL }
 
+enum class AssignmentRequestStatus { PENDING, APPROVED, REJECTED, SUPERSEDED }
+
 @Stable
 data class User(
     var id: Int = 0,
@@ -82,6 +84,23 @@ data class ScheduleEntry(
     var classroomId: String = "",
     var day: Int = 0,
     var timeSlot: Int = 0
+)
+
+@Stable
+data class AssignmentRequest(
+    var id: String = "",
+    var teacherId: Int = 0,
+    var teacherName: String = "",
+    var courseCode: String = "",
+    var courseName: String = "",
+    var classroomId: String = "",
+    var day: Int = 0,
+    var timeSlot: Int = 0,
+    var status: AssignmentRequestStatus = AssignmentRequestStatus.PENDING,
+    var adminNote: String = "",
+    var teacherNote: String = "",
+    var createdAt: Long = 0L,
+    var updatedAt: Long = 0L
 )
 
 @Stable
