@@ -43,7 +43,7 @@ fun AdminDashboardScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text("EduSync Yönetim", fontWeight = FontWeight.Bold) },
+                title = { Text("KampusTakvim Yönetim", fontWeight = FontWeight.Bold) },
                 actions = {
                     IconButton(onClick = onLogout) {
                         Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Çıkış Yap", tint = ErrorRed)

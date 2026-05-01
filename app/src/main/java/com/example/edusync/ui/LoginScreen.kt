@@ -67,7 +67,7 @@ fun LoginScreen(
             )
             
             Text(
-                text = "EduSync",
+                text = "KampusTakvim",
                 style = MaterialTheme.typography.displayMedium,
                 color = Color.White,
                 fontWeight = FontWeight.ExtraBold,

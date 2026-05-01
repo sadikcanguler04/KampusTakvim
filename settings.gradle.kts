@@ -22,6 +22,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "EduSync"
+rootProject.name = "KampusTakvim"
 include(":app")
  
