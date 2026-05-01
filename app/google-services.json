@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "471708951731",
-    "project_id": "edusync-e905f",
-    "storage_bucket": "edusync-e905f.firebasestorage.app"
+    "project_number": "269829665437",
+    "project_id": "kampustakvim",
+    "storage_bucket": "kampustakvim.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:471708951731:android:f4f8634afb0cd847dbbcc6",
+        "mobilesdk_app_id": "1:269829665437:android:63038e6c3b1bb210105a74",
         "android_client_info": {
           "package_name": "com.example.edusync"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyD9bEJ4LphiYtwJubodihYSsmSN0qhZ6-4"
+          "current_key": "AIzaSyCWsMzOmxhXlPQ__TdRRd8v7JI9NezPAB4"
         }
       ],
       "services": {

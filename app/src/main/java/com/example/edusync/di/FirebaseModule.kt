@@ -17,7 +17,7 @@ object FirebaseModule {
     fun provideFirebaseDatabase(): FirebaseDatabase {
         // Simplified to prevent startup hangs. 
         // Persistence is explicitly disabled to avoid SQLite I/O blocking on API 34/35 emulators.
-        val databaseUrl = "https://edusync-e905f-default-rtdb.europe-west1.firebasedatabase.app/" 
+        val databaseUrl = "https://kampustakvim-default-rtdb.europe-west1.firebasedatabase.app/"
         val database = FirebaseDatabase.getInstance(databaseUrl)
         database.setPersistenceEnabled(false)
         return database
